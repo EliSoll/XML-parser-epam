@@ -9,7 +9,7 @@ import java.io.File;
  */
 public final class Constants {
     // files
-   
+
     public static final String VALID_XML_FILE = "input.xml";
     public static final String INVALID_XML_FILE = "invalidXML.xml";
     public static final String XSD_FILE = "input.xsd";
