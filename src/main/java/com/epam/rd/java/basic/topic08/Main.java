@@ -5,45 +5,86 @@ package com.epam.rd.java.basic.topic08;
 import com.epam.rd.java.basic.topic08.controller.DOMController;
 import com.epam.rd.java.basic.topic08.controller.SAXController;
 import com.epam.rd.java.basic.topic08.controller.STAXController;
-import com.epam.rd.java.basic.topic08.util.Sorting;
-import com.epam.rd.java.basic.topic08.entity.Flowers;
-
-public final class Main {
-
-	public static void main(final String[] args) throws Exception {
-		String xmlFileName = "input.xml";
+import com.epam.rd.java.basic.topic08.ua.nure.Flowers;
+import com.epam.rd.java.basic.topic08.util.Sorter;
+import com.epam.rd.java.basic.topic08.util.Transformer;
+import org.xml.sax.SAXException;
 
 
 
+public class Main {
+
+	public static void main(String[] args) throws Exception {
+		if (args.length != 1) {
+			return;
+		}
+
+		String xmlFileName = args[0];
+		System.out.println("Input ==> " + xmlFileName);
+
+		////////////////////////////////////////////////////////
+		// DOM
+		////////////////////////////////////////////////////////
+
+		// get container
 		DOMController domController = new DOMController(xmlFileName);
-		domController.parse(true);
+		try {
+			domController.parse(true); // <-- parse with validation
+		} catch (SAXException ex) {
+			ex.printStackTrace();
+			System.err.println("====================================");
+			System.err.println("XML not valid");
+			System.err.println("====================================");
+		}
 
-		Flowers flowers = domController.getFlowers();
-		Sorting.setSortFlowersByAveLen(flowers);
+		// sort (case 1)
+		Sorter.sortFlowersByFlowerName(domController.getFlowers());
 
+		// save
 		String outputXmlFile = "output.dom.xml";
-		DOMController.saveXML(flowers, outputXmlFile);
+		Flowers fls = domController.getFlowers();
+		DOMController.saveXML(fls, outputXmlFile);
+		//System.out.println(fls);
 
+		////////////////////////////////////////////////////////
+		// SAX
+		////////////////////////////////////////////////////////
 
-
+		// get
 		SAXController saxController = new SAXController(xmlFileName);
-		saxController.parse(true);
-		flowers = saxController.getFlowers();
+		saxController.parse(true); // <-- do parse with validation on (success)
+		fls = saxController.getFlowers();
 
-		Sorting.setSortFlowersByFlowersName(flowers);
+		// sort  (case 2)
+		Sorter.sortFlowersByFlowerOrigin(fls);
 
+		// save
 		outputXmlFile = "output.sax.xml";
-		DOMController.saveXML(flowers, outputXmlFile);
+		DOMController.saveXML(fls, outputXmlFile);
 
+		////////////////////////////////////////////////////////
+		// StAX
+		////////////////////////////////////////////////////////
 
-
+		// get
 		STAXController staxController = new STAXController(xmlFileName);
-		staxController.parse();
-		flowers = staxController.getFlowers();
+		staxController.parse(); // <-- do parse (success)
+		fls = staxController.getFlowers();
 
-		Sorting.setSortFlowersByWateringMeasure(flowers);
+		// sort  (case 3)
+		Sorter.sortFlowersByFlowerWatering(fls);
 
+		// save
 		outputXmlFile = "output.stax.xml";
-		DOMController.saveXML(flowers, outputXmlFile);
+		DOMController.saveXML(fls, outputXmlFile);
+
+		////////////////////////////////////////////////////////
+		// Transform xml to html
+		////////////////////////////////////////////////////////
+		System.out.println("XML ==> HTML");
+		String xslFileName = "input.xsl";
+		String htmlFileName = "input.html";
+		Transformer.saveToHTML(xmlFileName, xslFileName, htmlFileName);
 	}
+
 }

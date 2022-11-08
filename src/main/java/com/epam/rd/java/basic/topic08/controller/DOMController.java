@@ -1,12 +1,27 @@
 package com.epam.rd.java.basic.topic08.controller;
 
 
-import com.epam.rd.java.basic.topic08.constants.Constants;
-import com.epam.rd.java.basic.topic08.constants.XMLConstats;
-import com.epam.rd.java.basic.topic08.entity.*;
-import com.epam.rd.java.basic.topic08.util.Saving;
+import java.io.File;
+import java.io.IOException;
+import java.math.BigInteger;
+import java.util.List;
+import java.util.logging.Level;
 
-//import entity.*;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.transform.Result;
+import javax.xml.transform.Source;
+import javax.xml.transform.TransformerException;
+import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.dom.DOMSource;
+import javax.xml.transform.stream.StreamResult;
+
+import com.epam.rd.java.basic.topic08.constants.Constants;
+import com.epam.rd.java.basic.topic08.constants.XML;
+import com.epam.rd.java.basic.topic08.ua.nure.Flowers;
+import org.w3c.dom.Attr;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -15,41 +30,75 @@ import org.xml.sax.SAXException;
 import org.xml.sax.SAXParseException;
 import org.xml.sax.helpers.DefaultHandler;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.transform.TransformerException;
-import java.io.IOException;
-import java.math.BigInteger;
+import com.epam.rd.java.basic.topic08.constants.Constants;
+import com.epam.rd.java.basic.topic08.constants.XML;
+import com.epam.rd.java.basic.topic08.util.Transformer;
+import com.epam.rd.java.basic.topic08.util.Util;
+import com.epam.rd.java.basic.topic08.util.XSDValidator;
 
 
+
+/**
+ * Controller for DOM parser.
+ */
 public class DOMController {
-
+	java.util.logging.Logger logger =  java.util.logging.Logger.getLogger(this.getClass().getName());
 	private String xmlFileName;
+	private String xsdFileName;
 
-	private Flowers flowers;
+	private Flowers flowers; // <-- container
 
-	public DOMController(String xmlFileName){
+	public DOMController(String xmlFileName) {
 		this.xmlFileName = xmlFileName;
+		this.xsdFileName = "input.xsd";
+		//logger.setLevel(Level.OFF);
 	}
+
 
 	public Flowers getFlowers() {
 		return flowers;
 	}
 
+	/**
+	 * Parses XML document.
+	 *
+	 * @param validate
+	 *            If true validate XML document against its XML schema.
+	 */
 	public void parse(boolean validate) throws ParserConfigurationException,
 			SAXException, IOException {
 
+		// obtain DOM parser
+
+		// get document builder factory
+		// this way you obtain DOM analyzer based on internal implementation
+		// of the XERCES library bundled with jdk
+		//
+		// if you place xercesImpl.jar to application classpath the following invocation:
+		// 		DocumentBuilderFactory.newInstance()
+		// returns factory based on the external XERCES library.
+		// (see xercesImpl.jar/META-INF/services/javax.xml.parsers.DocumentBuilderFactory)
+		//
+		// if there is no xercesImpl.jar in classpath then
+		// internal implementation of XERCES will be used automatically
+		// i.e. in this case you may use the following code:
+		// 		DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+
 		DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance(
-				Constants.CLASS_DOCUMENT_BUILDER_FACTORY_INTERNAL,
+				Constants.CLASS__DOCUMENT_BUILDER_FACTORY_INTERNAL,
 				this.getClass().getClassLoader());
-		dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+		// let sonar be happy
+		dbf.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
+		dbf.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
 
+		// set properties for Factory
+		dbf.setNamespaceAware(true); // <-- XML document has namespace
+		if (validate) { // <-- make parser validating
+//			dbf.setFeature(Constants.FEATURE__TURN_VALIDATION_ON, true);
+//			dbf.setFeature(Constants.FEATURE__TURN_SCHEMA_VALIDATION_ON, true);
 
-		dbf.setNamespaceAware(true);
-		if (validate) {
-			dbf.setFeature(Constants.FEATURE_TURN_VALIDATION_ON, true);
-			dbf.setFeature(Constants.FEATURE_TURN_SCHEMA_VALIDATION_ON, true);
+			XSDValidator validator = new XSDValidator(xsdFileName);
+			validator.validate(xmlFileName);
 		}
 
 		DocumentBuilder db = dbf.newDocumentBuilder();
@@ -57,160 +106,333 @@ public class DOMController {
 		db.setErrorHandler(new DefaultHandler() {
 			@Override
 			public void error(SAXParseException e) throws SAXException {
-				throw e;
+				throw e; // <-- throw exception if XML document is NOT valid
 			}
 		});
 
-		Document document = db.parse(xmlFileName);
-		Element root = document.getDocumentElement();
+		Document document = db.parse(xmlFileName); // <-- parse XML document
+		Element root = document.getDocumentElement(); // <-- get root element
 
-
+		// create container
 		flowers = new Flowers();
 
 		NodeList flowerNodes = root
-				.getElementsByTagName(XMLConstats.FLOWER.value());
+				.getElementsByTagName(XML.FLOWER.value());
 
 		for (int j = 0; j < flowerNodes.getLength(); j++) {
-			Flower flower = getFlower(flowerNodes.item(j));
-			flowers.getFlower().add(flower);
+			Flowers.Flower flower = getFlower(flowerNodes.item(j));
+			flowers.getFlower().add(flower); // <-- add flower to container
 		}
 	}
 
-	public static void saveXML(Flowers flowers, String xmlFileName)
-			throws ParserConfigurationException, TransformerException {
-		DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance(
-				Constants.CLASS_DOCUMENT_BUILDER_FACTORY_INTERNAL,
-				DOMController.class.getClassLoader());
-		dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+	/**
+	 * Extracts flower object from the flower XML node.
+	 *
+	 * @param qNode
+	 *            flower node.
+	 * @return Flower object.
+	 */
+	private Flowers.Flower getFlower(Node qNode) {
+		Flowers.Flower flower = new Flowers.Flower();
+		Element qElement = (Element) qNode;
+
+//		NodeList childNodes = qNode.getChildNodes();
+//		for (int i = 0; i < childNodes.getLength(); i++) {
+//			Node n = childNodes.item(i);
+//			if (n.getLocalName().equals(XML.QUESTION_TEXT.value())) {
+//				question.setQuestionText(n.getTextContent());
+//			}
+//			if (n.getLocalName().equals(XML.ANSWER.value())) {
+//				question.getAnswers().add(getAnswer(n));
+//			}
+//		}
+
+		Node qtNode = qElement.getElementsByTagName(XML.NAME.value())
+				.item(0);
+		flower.setName(qtNode.getTextContent());
+
+		qtNode = qElement.getElementsByTagName(XML.SOIL.value())
+				.item(0);
+		flower.setSoil(qtNode.getTextContent());
+
+		qtNode = qElement.getElementsByTagName(XML.ORIGIN.value())
+				.item(0);
+		flower.setOrigin(qtNode.getTextContent());
 
 
-		dbf.setNamespaceAware(true);
+		qtNode = qElement.getElementsByTagName(XML.VISUALPARAMS.value())
+				.item(0);
+		flower.setVisualParameters(getVisualParameters(qtNode));
 
-		DocumentBuilder db = dbf.newDocumentBuilder();
-		Document document = db.newDocument();
+		qtNode = qElement.getElementsByTagName(XML.GROWINGTIPS.value())
+				.item(0);
+		flower.setGrowingTips(getGrowingTips(qtNode));
 
+		qtNode = qElement.getElementsByTagName(XML.MULTIPLYING.value())
+				.item(0);
+		flower.setMultiplying(qtNode.getTextContent());
 
-		Element tElement = document.createElement(XMLConstats.FLOWERS.value());
-
-		document.appendChild(tElement);
-
-		// add questions elements
-		for (Flower flower : flowers.getFlower()){
-			//flower
-			Element fElement = document.createElement(XMLConstats.FLOWER.value());
-			tElement.appendChild(fElement);
-			//name
-			Element nElement = document.createElement(XMLConstats.NAME.value());
-			nElement.setTextContent(flower.getName());
-			fElement.appendChild(nElement);
-			//soil
-			Element sElement = document.createElement(XMLConstats.SOIL.value());
-			sElement.setTextContent(flower.getSoil());
-			fElement.appendChild(sElement);
-			//origin
-			Element oElement = document.createElement(XMLConstats.ORIGIN.value());
-			oElement.setTextContent(flower.getOrigin());
-			fElement.appendChild(oElement);
-			//visual parameters
-			Element vsElement = document.createElement(XMLConstats.VISUALPARAMETERS.value());
-			fElement.appendChild(vsElement);
-			//stemColour
-			Element vsscElement = document.createElement(XMLConstats.STEAMCOLOUR.value());
-			vsscElement.setTextContent(flower.getVisualParameters().getStemColour());
-			vsElement.appendChild(vsscElement);
-			//leafColour
-			Element vslcElement = document.createElement(XMLConstats.LEAFCOLOUR.value());
-			vslcElement.setTextContent(flower.getVisualParameters().getLeafColour());
-			vsElement.appendChild(vslcElement);
-			//aveLenFlower
-			Element vsaElement = document.createElement(XMLConstats.AVELENFLOWER.value());
-			vsaElement.setTextContent(flower.getVisualParameters().getAveLenFlower().getValue().toString());
-			vsaElement.setAttribute(XMLConstats.MEASURE.value(), flower.getVisualParameters().getAveLenFlower().getMeasure());
-			vsElement.appendChild(vsaElement);
-			//growingTips
-			Element gtElement = document.createElement(XMLConstats.GROWINGTIPS.value());
-			fElement.appendChild(gtElement);
-			//tempreture
-			Element gttElement = document.createElement(XMLConstats.TEMPERETURE.value());
-			gttElement.setTextContent(flower.getGrowingTips().getTempreture().getValue().toString());
-			gttElement.setAttribute(XMLConstats.MEASURE.value(), flower.getGrowingTips().getTempreture().getMeasure());
-			gtElement.appendChild(gttElement);
-			//lighting
-			Element gtlElement = document.createElement(XMLConstats.LIGHTNING.value());
-			gtlElement.setAttribute(XMLConstats.LIGHTREQUIRING.value(),flower.getGrowingTips().getLighting().getLightRequiring());
-			gtElement.appendChild(gtlElement);
-			//watering
-			Element gtwElement = document.createElement(XMLConstats.WATERING.value());
-			gtwElement.setTextContent(flower.getGrowingTips().getWatering().getValue().toString());
-			gtwElement.setAttribute(XMLConstats.MEASURE.value(), flower.getGrowingTips().getWatering().getMeasure());
-			gtElement.appendChild(gtwElement);
-			//multiplying
-			Element mElement = document.createElement(XMLConstats.MULTIPLYING.value());
-			mElement.setTextContent(flower.getMultiplying());
-			fElement.appendChild(mElement);
-		}
-
-		Saving.saveToXML(document, xmlFileName); // DOM -> XML
-	}
-
-	private Flower getFlower(Node vNode) {
-		Flower flower = new Flower();
-		Element fElement = (Element) vNode;
-
-		Node qnNode = fElement.getElementsByTagName(XMLConstats.NAME.value()).item(0);
-		flower.setName(qnNode.getTextContent());
-		Node qsNode = fElement.getElementsByTagName(XMLConstats.SOIL.value()).item(0);
-		flower.setSoil(qsNode.getTextContent());
-		Node qoNode = fElement.getElementsByTagName(XMLConstats.ORIGIN.value()).item(0);
-		flower.setOrigin(qoNode.getTextContent());
-		flower.setVisualParameters(getVisualParameters(vNode));
-		flower.setGrowingTips(getGrowingTips(vNode));
-		flower.setMultiplying(fElement.getElementsByTagName(XMLConstats.MULTIPLYING.value()).item(0).getTextContent());
 
 		return flower;
 	}
 
-	private VisualParameters getVisualParameters(Node vNode){
-		VisualParameters visualParameters = new VisualParameters();
-		Element vElement = (Element) vNode;
+	/**
+	 * Extracts visualParameters object from the visualParameters XML node.
+	 *
+	 * @param aNode
+	 *            visualParameters node.
+	 * @return VisualParameters object.
+	 */
+	private Flowers.Flower.VisualParameters getVisualParameters(Node aNode) {
+		Flowers.Flower.VisualParameters params = new Flowers.Flower.VisualParameters();
+		Element aElement = (Element) aNode;
 
-		Node scNode = vElement.getElementsByTagName(XMLConstats.STEAMCOLOUR.value()).item(0);
-		visualParameters.setStemColour(scNode.getTextContent());
-		Node lcNode = vElement.getElementsByTagName(XMLConstats.LEAFCOLOUR.value()).item(0);
-		visualParameters.setLeafColour(lcNode.getTextContent());
-		visualParameters.setAveLenFlower(getAveLenFlower(vNode));
+		Node qtNode = aElement.getElementsByTagName(XML.STEMCOLOR.value())
+				.item(0);
+		params.setStemColour(qtNode.getTextContent());
 
-		return visualParameters;
+		qtNode = aElement.getElementsByTagName(XML.LEAFCOLOR.value())
+				.item(0);
+		params.setLeafColour(qtNode.getTextContent());
+
+
+		Flowers.Flower.VisualParameters.AveLenFlower aveflower = new Flowers.Flower.VisualParameters.AveLenFlower();
+		Node aveNode = aElement.getElementsByTagName(XML.AVELENFLOWER.value())
+				.item(0);
+		Element aveElement = (Element) aveNode;
+		aveflower.setMeasure(aveElement.getAttribute(XML.MEASURE.value()));
+		aveflower.setValue(Util.valueOfBigInt(aveElement.getTextContent()));
+		params.setAveLenFlower(aveflower);
+
+		return params;
 	}
 
-	private AveLenFlower getAveLenFlower(Node vNode){
-		AveLenFlower aveLenFlower = new AveLenFlower();
-		Element aElement = (Element) vNode;
+	/**
+	 * Extracts GrowingTips object from the growingTips XML node.
+	 *
+	 * @param aNode
+	 *            growingTips node.
+	 * @return GrowingTips object.
+	 */
+	private Flowers.Flower.GrowingTips getGrowingTips(Node aNode) {
+		Flowers.Flower.GrowingTips tips = new Flowers.Flower.GrowingTips();
+		Element aElement = (Element) aNode;
 
-		Node node = aElement.getElementsByTagName(XMLConstats.AVELENFLOWER.value()).item(0);
-		aveLenFlower.setValue(BigInteger.valueOf(Integer.parseInt(node.getTextContent())));
-		aveLenFlower.setMeasure(node.getAttributes().item(0).getTextContent());
-		return  aveLenFlower;
+		Flowers.Flower.GrowingTips.Tempreture temp = new Flowers.Flower.GrowingTips.Tempreture();
+		Node qtNode = aElement.getElementsByTagName(XML.TEMPRETURE.value())
+				.item(0);
+		Element tempElement = (Element) qtNode;
+		temp.setMeasure(tempElement.getAttribute(XML.MEASURE.value()));
+		temp.setValue(Util.valueOfBigInt(tempElement.getTextContent()));
+		tips.setTempreture(temp);
+
+		Flowers.Flower.GrowingTips.Lighting light = new Flowers.Flower.GrowingTips.Lighting();
+		qtNode = aElement.getElementsByTagName(XML.LIGHTING.value())
+				.item(0);
+		tempElement = (Element) qtNode;
+		light.setLightRequiring(tempElement.getAttribute(XML.LIGHTREQUIRING.value()));
+		tips.setLighting(light);
+
+		Flowers.Flower.GrowingTips.Watering water = new Flowers.Flower.GrowingTips.Watering();
+		qtNode = aElement.getElementsByTagName(XML.WATERING.value())
+				.item(0);
+		tempElement = (Element) qtNode;
+		water.setMeasure(tempElement.getAttribute(XML.MEASURE.value()));
+		water.setValue(Util.valueOfBigInt(tempElement.getTextContent()));
+		tips.setWatering(water);
+
+		return tips;
 	}
 
-	private GrowingTips getGrowingTips(Node vNode){
-		GrowingTips growingTips = new GrowingTips();
-		Element element = (Element) vNode;
+	/**
+	 * Saves Flowers object in XML file (through DOM).
+	 *
+	 * @param flowers
+	 *            Flowers object to be saved.
+	 * @param xmlFileName
+	 *            Output xml file name.
+	 */
+	public static void saveXML(Flowers flowers, String xmlFileName)
+			throws ParserConfigurationException, TransformerException {
 
-		Node node = element.getElementsByTagName(XMLConstats.TEMPERETURE.value()).item(0);
-		growingTips.setTempreture(new Tempreture());
-		growingTips.getTempreture().setValue(BigInteger.valueOf(Integer.parseInt(node.getTextContent())));
-		growingTips.getTempreture().setMeasure(node.getAttributes().item(0).getTextContent());
+		// obtain DOM parser
 
-		node = element.getElementsByTagName(XMLConstats.LIGHTNING.value()).item(0);
-		growingTips.setLighting(new Lighting());
-		growingTips.getLighting().setLightRequiring(node.getAttributes().item(0).getTextContent());
+		// get document builder factory
+		// this way you obtain DOM analyzer based on internal implementaion
+		// of the XERCES library bundled with jdk
+		//
+		// if you place xercesImpl.jar to application classpath the following invocation:
+		// 		DocumentBuilderFactory.newInstance()
+		// returns factory based on the external XERCES library.
+		// (see xercesImpl.jar/META-INF/services/javax.xml.parsers.DocumentBuilderFactory)
+		//
+		// if there is no xercesImpl.jar in classpath then
+		// internal implementation of XERCES will be used automatically
+		// i.e. in this case you may use the following code:
+		// 		DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
 
-		node = element.getElementsByTagName(XMLConstats.WATERING.value()).item(0);
-		growingTips.setWatering(new Watering());
-		growingTips.getWatering().setValue(BigInteger.valueOf(Integer.parseInt(node.getTextContent())));
-		growingTips.getWatering().setMeasure(node.getAttributes().item(0).getTextContent());
+		DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance(Constants.CLASS__DOCUMENT_BUILDER_FACTORY_INTERNAL,
+				DOMController.class.getClass().getClassLoader());
+		// LET SONAR BE HAPPY
+		dbf.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, "");
+		dbf.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
 
-		return growingTips;
+		// set properties for Factory
+		dbf.setNamespaceAware(true); // <-- XML document has namespace
+
+		DocumentBuilder db = dbf.newDocumentBuilder();
+		Document document = db.newDocument();
+
+		// this is the root element
+		Element tElement = document.createElement(XML.FLOWERS.value());
+		/*Element tElement = document.createElementNS(
+				Constants.MY_NS__URI, Constants.MY_NS__PREFIX + ":" + XML.FLOWERS.value());
+        */
+
+		// set schema location
+		tElement.setAttributeNS(
+				XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI,
+				Constants.SCHEMA_LOCATION__ATTR_FQN,
+				Constants.SCHEMA_LOCATION__URI);
+		tElement.setAttribute("xmlns", Constants.MY_NS__URI);
+
+
+
+		List<Flowers.Flower> fls = flowers.getFlower();
+		for (Flowers.Flower fl : fls) {
+			Element flowerElem = document.createElement(XML.FLOWER.value());
+
+			Element name = document.createElement(XML.NAME.value());
+			name.setTextContent(fl.getName());
+			flowerElem.appendChild(name);
+
+			Element soil = document.createElement(XML.SOIL.value());
+			soil.setTextContent(fl.getSoil());
+			flowerElem.appendChild(soil);
+
+			Element origin = document.createElement(XML.ORIGIN.value());
+			origin.setTextContent(fl.getOrigin());
+			flowerElem.appendChild(origin);
+
+			flowerElem.appendChild(GetVisualParamsElement(document, fl));
+			flowerElem.appendChild(GetGrowingTipsElement(document, fl));
+
+			Element multi = document.createElement(XML.MULTIPLYING.value());
+			multi.setTextContent(fl.getMultiplying());
+			flowerElem.appendChild(multi);
+
+			tElement.appendChild(flowerElem);
+		}
+
+		document.appendChild(tElement);
+
+		// add questions elements
+		/*for (Question question : test.getQuestions()) {
+			// add question
+			Element qElement = document.createElement(XML.QUESTION.value());
+			tElement.appendChild(qElement);
+
+			// add question text
+			Element qtElement =
+					document.createElement(XML.QUESTION_TEXT.value());
+			qtElement.setTextContent(question.getQuestionText());
+			qElement.appendChild(qtElement);
+
+			// add answers
+			for (Answer answer : question.getAnswers()) {
+				Element aElement = document.createElement(XML.ANSWER.value());
+				aElement.setTextContent(answer.getContent());
+
+				// set attribute
+				if (answer.isCorrect())
+					aElement.setAttribute(XML.CORRECT.value(), "true");
+				qElement.appendChild(aElement);
+			}
+		}*/
+
+		/*Transformer transformer = TransformerFactory.newInstance().newTransformer();
+		Result output = new StreamResult(new File(xmlFileName));
+		Source input = new DOMSource(document);
+		transformer.transform(input, output);*/
+		Transformer.saveToXML(document, xmlFileName); // DOM -> XML
 	}
+
+	/**
+	 * Get visualParams to xml document.
+	 * @param document xml document.
+	 * @param flower Flower object where is data.
+	 */
+	private static Element GetVisualParamsElement(Document document, Flowers.Flower flower) {
+		Element result = document.createElement(XML.VISUALPARAMS.value());
+
+		Element stemColour = document.createElement(XML.STEMCOLOR.value());
+		stemColour.setTextContent(flower.getVisualParameters().getStemColour());
+		result.appendChild(stemColour);
+
+		Element leafColour = document.createElement(XML.LEAFCOLOR.value());
+		leafColour.setTextContent(flower.getVisualParameters().getLeafColour());
+		result.appendChild(leafColour);
+
+		Element ave = document.createElement(XML.AVELENFLOWER.value());
+		ave.setAttribute(XML.MEASURE.value(), flower.getVisualParameters().getAveLenFlower().getMeasure());
+		ave.setTextContent(flower.getVisualParameters().getAveLenFlower().getValue().toString());
+		result.appendChild(ave);
+
+		return result;
+	}
+
+	/**
+	 * Get growingTips to xml document.
+	 * @param document xml document.
+	 * @param flower Flower object where is data.
+	 */
+	private static Element GetGrowingTipsElement(Document document, Flowers.Flower flower) {
+		Element result = document.createElement(XML.GROWINGTIPS.value());
+
+		Element temp = document.createElement(XML.TEMPRETURE.value());
+		temp.setAttribute(XML.MEASURE.value(), flower.getGrowingTips().getTempreture().getMeasure());
+		temp.setTextContent(flower.getGrowingTips().getTempreture().getValue().toString());
+		result.appendChild(temp);
+
+		Element light = document.createElement(XML.LIGHTING.value());
+		light.setAttribute(XML.LIGHTREQUIRING.value(), flower.getGrowingTips().getLighting().getLightRequiring());
+		result.appendChild(light);
+
+		Element water = document.createElement(XML.WATERING.value());
+		water.setAttribute(XML.MEASURE.value(), flower.getGrowingTips().getWatering().getMeasure());
+		water.setTextContent(flower.getGrowingTips().getWatering().getValue().toString());
+		result.appendChild(water);
+
+		return result;
+	}
+
+	/*
+	public static void main(String[] args) throws ParserConfigurationException,
+			SAXException, IOException, TransformerException {
+
+		// try to parse NOT valid XML document with validation on (failed)
+		DOMController domContr = new DOMController(Constants.VALID_XML_FILE, Constants.XSD_FILE);
+		try {
+			domContr.parse(true); // <-- parse with validation (failed)
+		} catch (SAXException ex) {
+			ex.printStackTrace();
+			System.err.println("====================================");
+			System.err.println("XML not valid");
+			System.err.println("Test object --> " + domContr.getTest());
+			System.err.println("====================================");
+		}
+
+		// try to parse NOT valid XML document with validation off (success)
+		domContr.parse(false); // <-- parse with validation off (success)
+
+		// we have Test object at this point:
+		System.out.println("====================================");
+		System.out.print("Here is the test: \n" + domContr.getTest());
+		System.out.println("====================================");
+
+		// save test in XML file
+		Test test = domContr.getTest();
+		DOMController.saveXML(test, Constants.VALID_XML_FILE + ".dom.xml");
+	}
+	*/
 }

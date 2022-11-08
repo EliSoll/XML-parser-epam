@@ -1,185 +1,297 @@
 package com.epam.rd.java.basic.topic08.controller;
 
 
-import com.epam.rd.java.basic.topic08.constants.Constants;
-import com.epam.rd.java.basic.topic08.constants.XMLConstats;
-import com.epam.rd.java.basic.topic08.entity.*;
-//import entity.*;
-import org.xml.sax.*;
-import org.xml.sax.helpers.DefaultHandler;
-
-import javax.xml.parsers.ParserConfigurationException;
-import javax.xml.parsers.SAXParserFactory;
 import java.io.IOException;
 import java.math.BigInteger;
-import java.util.Objects;
 
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.SAXParserFactory;
+
+import com.epam.rd.java.basic.topic08.constants.Constants;
+import com.epam.rd.java.basic.topic08.constants.XML;
+import com.epam.rd.java.basic.topic08.ua.nure.Flowers;
+import com.epam.rd.java.basic.topic08.util.Util;
+import org.xml.sax.Attributes;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
+
+
+
+/**
+ * Controller for SAX parser.
+ */
 public class SAXController extends DefaultHandler {
+
 	private String xmlFileName;
 
 	public SAXController(String xmlFileName) {
 		this.xmlFileName = xmlFileName;
 	}
 
-	public void parse(boolean validate) throws SAXException,
-			ParserConfigurationException, IOException {
+	/**
+	 * Parses XML document.
+	 *
+	 * @param validate
+	 *            If true validate XML document against its XML schema. With
+	 *            this parameter it is possible make parser validating.
+	 */
+	public void parse(boolean validate) throws ParserConfigurationException,
+			SAXException, IOException {
+
+		// get sax parser factory
+		// this way you obtain SAX parser factory based on internal implementation
+		// of the XERCES library bundled with jdk
+		//
+		// if you place xercesImpl.jar to application classpath the following invocation:
+		// 		SAXParserFactory.newInstance()
+		// returns factory based on the external XERCES library
+		// (see xercesImpl.jar/META-INF/services/javax.xml.parsers.SAXParserFactory)
+		//
+		// If there is no xercesImpl.jar in classpath then
+		// internal implementation of XERCES will be used automatically
+		// i.e. in this case you may use the following code:
+		// 		SAXParserFactory factory = SAXParserFactory.newInstance();
+
 		SAXParserFactory factory = SAXParserFactory.newInstance(
-				Constants.CLASS_SAX_PARSER_FACTORY_INTERNAL,
+				Constants.CLASS__SAX_PARSER_FACTORY_INTERNAL,
 				this.getClass().getClassLoader());
-		factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+
 		factory.setNamespaceAware(true);
-		if(validate){
-			factory.setFeature(Constants.FEATURE_TURN_VALIDATION_ON, true);
-			factory.setFeature(Constants.FEATURE_TURN_SCHEMA_VALIDATION_ON, true);
+		if (validate) {
+			factory.setFeature(Constants.FEATURE__TURN_VALIDATION_ON, true);
+			factory.setFeature(Constants.FEATURE__TURN_SCHEMA_VALIDATION_ON, true);
 		}
 
-		javax.xml.parsers.SAXParser parser = factory.newSAXParser();
+		SAXParser parser = factory.newSAXParser();
 		parser.parse(xmlFileName, this);
 	}
+
+	// ///////////////////////////////////////////////////////////
+	// ERROR HANDLER IMPLEMENTATION
+	// ///////////////////////////////////////////////////////////
+
+	@Override
+	public void error(org.xml.sax.SAXParseException e) throws SAXException {
+		throw e; // <-- if XML document not valid just throw exception
+	};
+
+	// ///////////////////////////////////////////////////////////
+	// CONTENT HANDLER IMPLEMENTATION
+	// ///////////////////////////////////////////////////////////
 
 	private String currentElement; // <-- current element name holder
 
 	private Flowers flowers; // <-- main container
-	private Flower flower;
-	private GrowingTips growingTips;
-	private VisualParameters visualParameters;
+	private Flowers.Flower flower;
+	private Flowers.Flower.VisualParameters visualParameters;
+	private Flowers.Flower.VisualParameters.AveLenFlower aveLenFlower;
+	private Flowers.Flower.GrowingTips growingTips;
+	private Flowers.Flower.GrowingTips.Tempreture tempreture;
+	private Flowers.Flower.GrowingTips.Lighting lighting;
+	private Flowers.Flower.GrowingTips.Watering watering;
 
-	public Flowers getFlowers(){return flowers;}
-
+	public Flowers getFlowers() {
+		return flowers;
+	}
 
 	@Override
-	public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException {
+	public void startElement(String uri, String localName, String qName,
+							 Attributes attributes) throws SAXException {
+
 		currentElement = localName;
 
-		if(Objects.equals(currentElement, XMLConstats.FLOWERS.value())){
+		// WARNING!!!
+		// here and below we use '==' operation to compare two INTERNED STRINGS
+		if (currentElement == XML.FLOWERS.value()) {
 			flowers = new Flowers();
-		}else
-		if(Objects.equals(currentElement, XMLConstats.FLOWER.value())){
-			flower = new Flower();
-		}else
-		if(Objects.equals(currentElement, XMLConstats.VISUALPARAMETERS.value())){
-			visualParameters = new VisualParameters();
-		}else
-		if(Objects.equals(currentElement, XMLConstats.GROWINGTIPS.value())){
-			growingTips = new GrowingTips();
-		}else
-		if(Objects.equals(currentElement, XMLConstats.AVELENFLOWER.value())){
-			visualParameters.setAveLenFlower(new AveLenFlower());
-			if(attributes.getLength()> 0){
-				visualParameters.getAveLenFlower().setMeasure(attributes.getValue(uri,
-						XMLConstats.MEASURE.value()));
-			}
-		}else
-			checkGrowingTips(uri,attributes);
-	}
-
-	/**
-	 * Receive notification of the end of an element.
-	 *
-	 * <p>By default, do nothing.  Application writers may override this
-	 * method in a subclass to take specific actions at the end of
-	 * each element (such as finalising a tree node or writing
-	 * output to a file).</p>
-	 *
-	 * @param uri       The Namespace URI, or the empty string if the
-	 *                  element has no Namespace URI or if Namespace
-	 *                  processing is not being performed.
-	 * @param localName The local name (without prefix), or the
-	 *                  empty string if Namespace processing is not being
-	 *                  performed.
-	 * @param qName     The qualified name (with prefix), or the
-	 *                  empty string if qualified names are not available.
-	 * @throws SAXException Any SAX exception, possibly
-	 *                      wrapping another exception.
-	 * @see ContentHandler#endElement
-	 */
-	@Override
-	public void endElement(String uri, String localName, String qName) throws SAXException {
-
-		if(Objects.equals(localName, XMLConstats.FLOWER.value())){
-			flowers.getFlower().add(flower);
-		}else
-		if(Objects.equals(localName, XMLConstats.VISUALPARAMETERS.value())){
-			flower.setVisualParameters(visualParameters);
-		}else
-		if(Objects.equals(localName, XMLConstats.GROWINGTIPS.value())){
-			flower.setGrowingTips(growingTips);
+			return;
 		}
 
+		if (currentElement == XML.FLOWER.value()) {
+			flower = new Flowers.Flower();
+			return;
+		}
+
+		if (currentElement == XML.VISUALPARAMS.value()) {
+			visualParameters = new Flowers.Flower.VisualParameters();
+			return;
+		}
+
+		if (currentElement == XML.AVELENFLOWER.value()) {
+			aveLenFlower = new Flowers.Flower.VisualParameters.AveLenFlower();
+			if (attributes.getLength() > 0) {
+				aveLenFlower.setMeasure(attributes.getValue(uri, XML.MEASURE.value()));
+			}
+			return;
+		}
+
+		if (currentElement == XML.GROWINGTIPS.value()) {
+			growingTips = new Flowers.Flower.GrowingTips();
+			return;
+		}
+
+		if (currentElement == XML.TEMPRETURE.value()) {
+			tempreture = new Flowers.Flower.GrowingTips.Tempreture();
+			if (attributes.getLength() > 0) {
+				tempreture.setMeasure(attributes.getValue(uri, XML.MEASURE.value()));
+			}
+			return;
+		}
+
+		if (currentElement == XML.LIGHTING.value()) {
+			lighting = new Flowers.Flower.GrowingTips.Lighting();
+			if (attributes.getLength() > 0) {
+				lighting.setLightRequiring(attributes.getValue(XML.LIGHTREQUIRING.value()));
+				//lighting.setLightRequiring(attributes.getValue(uri, XML.LIGHTREQUIRING.value()));
+			}
+			return;
+		}
+
+		if (currentElement == XML.WATERING.value()) {
+			watering = new Flowers.Flower.GrowingTips.Watering();
+			if (attributes.getLength() > 0) {
+				watering.setMeasure(attributes.getValue(uri, XML.WATERING.value()));
+			}
+			return;
+		}
+
+		/*if (currentElement == XML.NAME.value()) {
+			answer = new Answer();
+			if (attributes.getLength() > 0) {
+				answer.setCorrect(Boolean.parseBoolean(attributes.getValue(uri,
+						XML.CORRECT.value())));
+			}
+		}*/
 	}
 
-	/**
-	 * Receive notification of character data inside an element.
-	 *
-	 * <p>By default, do nothing.  Application writers may override this
-	 * method to take specific actions for each chunk of character data
-	 * (such as adding the data to a node or buffer, or printing it to
-	 * a file).</p>
-	 *
-	 * @param ch     The characters.
-	 * @param start  The start position in the character array.
-	 * @param length The number of characters to use from the
-	 *               character array.
-	 * @throws SAXException Any SAX exception, possibly
-	 *                      wrapping another exception.
-	 * @see ContentHandler#characters
-	 */
 	@Override
-	public void characters(char[] ch, int start, int length) throws SAXException {
+	public void characters(char[] ch, int start, int length)
+			throws SAXException {
+
 		String elementText = new String(ch, start, length).trim();
 
 		if (elementText.isEmpty()) // <-- return if content is empty
 			return;
 
-		if (Objects.equals(currentElement, XMLConstats.NAME.value())) {
+		if (currentElement == XML.NAME.value()) {
 			flower.setName(elementText);
-		}else
-		if (Objects.equals(currentElement, XMLConstats.SOIL.value())) {
+			return;
+		}
+
+		if (currentElement == XML.SOIL.value()) {
 			flower.setSoil(elementText);
-		}else
-		if (Objects.equals(currentElement, XMLConstats.ORIGIN.value())) {
+			return;
+		}
+
+		if (currentElement == XML.ORIGIN.value()) {
 			flower.setOrigin(elementText);
-		}else
-		if(Objects.equals(currentElement, XMLConstats.STEAMCOLOUR.value())){
+			return;
+		}
+
+		if (currentElement == XML.STEMCOLOR.value()) {
 			visualParameters.setStemColour(elementText);
-		}else
-		if(Objects.equals(currentElement, XMLConstats.LEAFCOLOUR.value())){
+			return;
+		}
+
+		if (currentElement == XML.LEAFCOLOR.value()) {
 			visualParameters.setLeafColour(elementText);
-		}else
-		if(Objects.equals(currentElement, XMLConstats.AVELENFLOWER.value())){
-			visualParameters.getAveLenFlower().setValue(BigInteger.valueOf(Integer.parseInt(elementText)));
-		}else
-		if(Objects.equals(currentElement, XMLConstats.TEMPERETURE.value())){
-			growingTips.getTempreture().setValue(BigInteger.valueOf(Integer.parseInt(elementText)));
-		}else
-		if(Objects.equals(currentElement, XMLConstats.WATERING.value())){
-			growingTips.getWatering().setValue(BigInteger.valueOf(Integer.parseInt(elementText)));
-		}else
-		if(Objects.equals(currentElement, XMLConstats.MULTIPLYING.value())){
+			return;
+		}
+
+		if (currentElement == XML.AVELENFLOWER.value()) {
+			aveLenFlower.setValue(Util.valueOfBigInt(elementText));
+			return;
+		}
+
+		if (currentElement == XML.TEMPRETURE.value()) {
+			tempreture.setValue(Util.valueOfBigInt(elementText));
+			return;
+		}
+
+		if (currentElement == XML.WATERING.value()) {
+			watering.setValue(Util.valueOfBigInt(elementText));
+			return;
+		}
+
+		if (currentElement == XML.MULTIPLYING.value()) {
 			flower.setMultiplying(elementText);
+			return;
 		}
 	}
 
-	public void checkGrowingTips(String uri,Attributes attributes){
-		if(Objects.equals(currentElement, XMLConstats.TEMPERETURE.value())){
-			growingTips.setTempreture(new Tempreture());
-			if(attributes.getLength()> 0){
-				growingTips.getTempreture().setMeasure(attributes.getValue(uri,
-						XMLConstats.MEASURE.value()));
-			}
-		}else
-		if(Objects.equals(currentElement, XMLConstats.LIGHTNING.value())){
-			growingTips.setLighting(new Lighting());
-			if(attributes.getLength()> 0){
-				growingTips.getLighting().setLightRequiring(attributes.getValue(0));
-			}
-		}else
-		if(Objects.equals(currentElement, XMLConstats.WATERING.value())){
-			growingTips.setWatering(new Watering());
-			if(attributes.getLength()> 0){
-				growingTips.getWatering().setMeasure(attributes.getValue(uri,
-						XMLConstats.WATERING.value()));
-			}
+	@Override
+	public void endElement(String uri, String localName, String qName)
+			throws SAXException {
+		if (localName == XML.FLOWER.value()) {
+			flowers.getFlower().add(flower);
+			return;
+		}
+
+		if (localName == XML.AVELENFLOWER.value()) {
+			visualParameters.setAveLenFlower(aveLenFlower);
+			return;
+		}
+
+		if (localName == XML.VISUALPARAMS.value()) {
+			flower.setVisualParameters(visualParameters);
+			return;
+		}
+
+		if (localName == XML.TEMPRETURE.value()) {
+			growingTips.setTempreture(tempreture);
+			return;
+		}
+
+		if (localName == XML.LIGHTING.value()) {
+			growingTips.setLighting(lighting);
+			return;
+		}
+
+		if (localName == XML.WATERING.value()) {
+			growingTips.setWatering(watering);
+			return;
+		}
+
+		if (localName == XML.GROWINGTIPS.value()) {
+			flower.setGrowingTips(growingTips);
+			return;
 		}
 	}
+
+	/*
+	public static void main(String[] args) throws ParserConfigurationException,
+			SAXException, IOException {
+
+		// try to parse valid XML file (success)
+		SAXController saxContr = new SAXController(Constants.VALID_XML_FILE);
+		saxContr.parse(true); // <-- do parse with validation on (success)
+		Test test = saxContr.getTest(); // <-- obtain container
+
+		// we have Test object at this point:
+		System.out.println("====================================");
+		System.out.print("Here is the test: \n" + test);
+		System.out.println("====================================");
+
+		// now try to parse NOT valid XML (failed)
+		saxContr = new SAXController(Constants.INVALID_XML_FILE);
+		try {
+			saxContr.parse(true); // <-- do parse with validation on (failed)
+		} catch (Exception ex) {
+			System.err.println("====================================");
+			System.err.println("Validation is failed:\n" + ex.getMessage());
+			System.err
+					.println("Try to print test object:" + saxContr.getTest());
+			System.err.println("====================================");
+		}
+
+		// and now try to parse NOT valid XML with validation off (success)
+		saxContr.parse(false); // <-- do parse with validation off (success)
+
+		// we have Test object at this point:
+		System.out.println("====================================");
+		System.out.print("Here is the test: \n" + saxContr.getTest());
+		System.out.println("====================================");
+	}
+    */
 }
